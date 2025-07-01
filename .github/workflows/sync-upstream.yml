@@ -28,7 +28,7 @@ jobs:
       - name: Merge upstream/main
         run: |
           git checkout main
-          git merge --allow-unrelated-histories --ff-only upstream/main
+          git merge --allow-unrelated-histories upstream/main
 
       - name: Push changes
         uses: ad-m/github-push-action@v0.8.0
