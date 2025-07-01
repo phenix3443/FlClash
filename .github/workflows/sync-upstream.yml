@@ -22,6 +22,7 @@ jobs:
 
       - name: Add Upstream
         run: |
+          git remote add upstream git@github.com:chen08209/FlClash.git
           git fetch upstream
 
       - name: Merge upstream/main
