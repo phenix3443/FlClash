@@ -1,13 +1,10 @@
 import 'dart:async';
-import 'dart:typed_data';
-
 import 'package:dio/dio.dart';
-import 'package:fl_clash/common/constant.dart';
-import 'package:fl_clash/common/request.dart';
+import 'package:fl_clash/common/common.dart';
 import 'package:fl_clash/enum/enum.dart';
 import 'package:fl_clash/models/models.dart';
 import 'package:fl_clash/providers/app.dart';
-import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:riverpod/riverpod.dart';
 
@@ -230,6 +227,25 @@ void main() {
   group('CoreStatus provider', () {
     test('default is disconnected', () {
       expect(container.read(coreStatusProvider), CoreStatus.disconnected);
+    });
+
+    test('app state overrides default startup status to disconnected', () {
+      final appState = AppState(
+        brightness: Brightness.dark,
+        version: 1,
+        viewSize: Size.zero,
+        requests: FixedList(maxLength),
+        logs: FixedList(maxLength),
+        traffics: FixedList(30),
+        totalTraffic: const Traffic(),
+        systemUiOverlayStyle: const SystemUiOverlayStyle(),
+      );
+      final stateContainer = ProviderContainer(
+        overrides: buildAppStateOverrides(appState),
+      );
+      addTearDown(stateContainer.dispose);
+
+      expect(stateContainer.read(coreStatusProvider), CoreStatus.disconnected);
     });
   });
 

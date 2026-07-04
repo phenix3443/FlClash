@@ -103,6 +103,8 @@ class _VpnContainerState extends ConsumerState<VpnManager> {
         return;
       }
       ref.read(setupActionProvider.notifier).clearOhosVpnStopRollbackState();
+      await reconnectOhosUiCoreAfterVpnStop(globalState.container);
+      await ref.read(systemActionProvider.notifier).updateLocalIp();
       return;
     }
     try {
@@ -130,6 +132,8 @@ class _VpnContainerState extends ConsumerState<VpnManager> {
           message: 'OHOS VPN extension did not start',
         );
       }
+      await ref.read(systemActionProvider.notifier).updateLocalIp();
+      ref.read(checkIpNumProvider.notifier).add();
     } on PlatformException catch (error) {
       final message = _formatVpnError(error);
       commonPrint.log(

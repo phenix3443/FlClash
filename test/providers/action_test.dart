@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:fl_clash/common/common.dart';
 import 'package:fl_clash/models/models.dart';
 import 'package:fl_clash/enum/enum.dart';
@@ -138,6 +140,175 @@ void main() {
       );
     });
 
+    test(
+      'skipped ohos ui core startup sequence still attempts transport connection',
+      () async {
+        final container = ProviderContainer(
+          overrides: [
+            coreStatusProvider.overrideWithBuild(
+              (_, _) => CoreStatus.disconnected,
+            ),
+            vpnSettingProvider.overrideWithBuild(
+              (_, _) => const VpnProps(enable: true),
+            ),
+            versionProvider.overrideWithBuild((_, _) => 1),
+          ],
+        );
+        addTearDown(container.dispose);
+
+        final notifier = container.read(coreActionProvider.notifier);
+        final previousRunStartupInitStatus = runStartupInitStatus;
+        addTearDown(() {
+          runStartupInitStatus = previousRunStartupInitStatus;
+        });
+        runStartupInitStatus = (_) async {};
+        var preloadCalls = 0;
+        notifier.preloadCore = () async {
+          preloadCalls += 1;
+          return '';
+        };
+        notifier.showCoreConnectFailure = (_) {};
+        notifier.isCoreInit = () async => false;
+        notifier.runCoreInit = (_) async => true;
+
+        await runSkippedOhosUiCoreStartupSequence(
+          container,
+          isOhosOverride: true,
+        );
+
+        expect(preloadCalls, 1);
+        expect(container.read(coreStatusProvider), CoreStatus.connected);
+      },
+    );
+
+    test(
+      'skipped ohos ui core startup sequence keeps runtime stopped after transport connects',
+      () async {
+        final container = ProviderContainer(
+          overrides: [
+            coreStatusProvider.overrideWithBuild(
+              (_, _) => CoreStatus.disconnected,
+            ),
+            runTimeProvider.overrideWithBuild((_, _) => null),
+            vpnSettingProvider.overrideWithBuild(
+              (_, _) => const VpnProps(enable: true),
+            ),
+            versionProvider.overrideWithBuild((_, _) => 1),
+          ],
+        );
+        addTearDown(container.dispose);
+
+        final notifier = container.read(coreActionProvider.notifier);
+        final previousRunStartupInitStatus = runStartupInitStatus;
+        addTearDown(() {
+          runStartupInitStatus = previousRunStartupInitStatus;
+        });
+        runStartupInitStatus = (_) async {};
+        notifier.preloadCore = () async => '';
+        notifier.showCoreConnectFailure = (_) {};
+        notifier.isCoreInit = () async => false;
+        notifier.runCoreInit = (_) async => true;
+
+        await runSkippedOhosUiCoreStartupSequence(
+          container,
+          isOhosOverride: true,
+        );
+
+        expect(container.read(coreStatusProvider), CoreStatus.connected);
+        expect(container.read(isStartProvider), isFalse);
+        expect(container.read(runTimeProvider), isNull);
+      },
+    );
+
+    test(
+      'skipped ohos ui core startup sequence still initializes core after transport connects',
+      () async {
+        final container = ProviderContainer(
+          overrides: [
+            coreStatusProvider.overrideWithBuild(
+              (_, _) => CoreStatus.disconnected,
+            ),
+            vpnSettingProvider.overrideWithBuild(
+              (_, _) => const VpnProps(enable: true),
+            ),
+            versionProvider.overrideWithBuild((_, _) => 1),
+          ],
+        );
+        addTearDown(container.dispose);
+
+        final notifier = container.read(coreActionProvider.notifier);
+        final previousRunStartupInitStatus = runStartupInitStatus;
+        addTearDown(() {
+          runStartupInitStatus = previousRunStartupInitStatus;
+        });
+        runStartupInitStatus = (_) async {};
+        notifier.preloadCore = () async => '';
+        notifier.showCoreConnectFailure = (_) {};
+        var isCoreInitChecks = 0;
+        var initCalls = 0;
+        var initVersion = 0;
+        notifier.isCoreInit = () async {
+          isCoreInitChecks += 1;
+          return false;
+        };
+        notifier.runCoreInit = (version) async {
+          initCalls += 1;
+          initVersion = version;
+          return true;
+        };
+
+        await runSkippedOhosUiCoreStartupSequence(
+          container,
+          isOhosOverride: true,
+        );
+
+        expect(container.read(coreStatusProvider), CoreStatus.connected);
+        expect(isCoreInitChecks, 1);
+        expect(initCalls, 1);
+        expect(initVersion, 1);
+      },
+    );
+
+    test('ohos vpn stop reconnects the app ui core transport', () async {
+      final container = ProviderContainer(
+        overrides: [
+          coreStatusProvider.overrideWithBuild(
+            (_, _) => CoreStatus.disconnected,
+          ),
+          vpnSettingProvider.overrideWithBuild(
+            (_, _) => const VpnProps(enable: true),
+          ),
+          versionProvider.overrideWithBuild((_, _) => 1),
+        ],
+      );
+      addTearDown(container.dispose);
+
+      final notifier = container.read(coreActionProvider.notifier);
+      final previousPostStopSync = runOhosUiCorePostVpnStopSync;
+      addTearDown(() {
+        runOhosUiCorePostVpnStopSync = previousPostStopSync;
+      });
+      notifier.preloadCore = () async => '';
+      notifier.showCoreConnectFailure = (_) {};
+      var initCalls = 0;
+      notifier.isCoreInit = () async => false;
+      notifier.runCoreInit = (_) async {
+        initCalls += 1;
+        return true;
+      };
+      var profileSyncCalls = 0;
+      runOhosUiCorePostVpnStopSync = (_) async {
+        profileSyncCalls += 1;
+        return true;
+      };
+
+      await reconnectOhosUiCoreAfterVpnStop(container);
+
+      expect(container.read(coreStatusProvider), CoreStatus.connected);
+      expect(initCalls, 1);
+      expect(profileSyncCalls, 1);
+    });
+
     test('pending debug vpn start forces local vpn enable before syncing startup state', () {
       final container = ProviderContainer(
         overrides: [
@@ -180,6 +351,37 @@ void main() {
       await runUiCoreStartupSequence(container);
 
       expect(container.read(coreStatusProvider), CoreStatus.disconnected);
+    });
+
+    test('connectCore coalesces concurrent startup attempts', () async {
+      final container = ProviderContainer(
+        overrides: [
+          coreStatusProvider.overrideWithBuild((_, _) => CoreStatus.disconnected),
+          versionProvider.overrideWithBuild((_, _) => 1),
+        ],
+      );
+      addTearDown(container.dispose);
+
+      final notifier = container.read(coreActionProvider.notifier);
+      notifier.showCoreConnectFailure = (_) {};
+      var preloadCalls = 0;
+      final preloadCompleter = Completer<String>();
+      notifier.preloadCore = () {
+        preloadCalls += 1;
+        return preloadCompleter.future;
+      };
+
+      final firstConnect = notifier.connectCore();
+      final secondConnect = notifier.connectCore();
+
+      expect(preloadCalls, 1);
+      expect(container.read(coreStatusProvider), CoreStatus.connecting);
+
+      preloadCompleter.complete('');
+      await Future.wait([firstConnect, secondConnect]);
+
+      expect(preloadCalls, 1);
+      expect(container.read(coreStatusProvider), CoreStatus.connected);
     });
 
     test('initCore throws when core init returns false', () async {
@@ -418,6 +620,53 @@ void main() {
       expect(container.read(coreStatusProvider), CoreStatus.disconnected);
       expect(container.read(isStartProvider), isFalse);
       expect(globalState.needInitStatus, isTrue);
+    });
+
+    test('ohos idle startup applies profile to ui core instead of config-only prep', () async {
+      final container = ProviderContainer(
+        overrides: [
+          currentProfileIdProvider.overrideWithBuild((_, _) => null),
+          profilesProvider.overrideWith(() => _TestProfiles(const [])),
+          vpnSettingProvider.overrideWithBuild(
+            (_, _) => const VpnProps(enable: true),
+          ),
+        ],
+      );
+      addTearDown(container.dispose);
+
+      final notifier = container.read(setupActionProvider.notifier);
+      var applyProfileCalls = 0;
+      notifier.isOhosPlatform = () => true;
+      notifier.applyProfileForInitIdle = () async {
+        applyProfileCalls += 1;
+        return true;
+      };
+
+      await notifier.initStatus();
+
+      expect(applyProfileCalls, 1);
+    });
+
+    test('ohos stopping vpn keeps ui core connected', () async {
+      final container = ProviderContainer(
+        overrides: [
+          coreStatusProvider.overrideWithBuild((_, _) => CoreStatus.connected),
+          runTimeProvider.overrideWithBuild((_, _) => 5000),
+          vpnSettingProvider.overrideWithBuild(
+            (_, _) => const VpnProps(enable: true),
+          ),
+        ],
+      );
+      addTearDown(container.dispose);
+
+      final notifier = container.read(setupActionProvider.notifier);
+      notifier.isOhosPlatform = () => true;
+
+      await notifier.updateStatus(false);
+
+      expect(container.read(coreStatusProvider), CoreStatus.connected);
+      expect(container.read(isStartProvider), isFalse);
+      expect(container.read(runTimeProvider), isNull);
     });
 
     test('restore failed OHOS VPN stop recovers local running state snapshot', () async {

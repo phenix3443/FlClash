@@ -545,6 +545,66 @@ void main() {
     );
   });
 
+  test('OHOS VpnManager refreshes local IP after successful stop', () async {
+    final vpnManagerSource = await File(
+      path.join(
+        Directory.current.path,
+        'lib/manager/vpn_manager.dart',
+      ),
+    ).readAsString();
+
+    expect(
+      vpnManagerSource,
+      matches(
+        RegExp(
+          r'reconnectOhosUiCoreAfterVpnStop\(globalState\.container\);[\s\S]*updateLocalIp\(\);',
+          multiLine: true,
+        ),
+      ),
+    );
+  });
+
+  test('OHOS VpnManager refreshes local IP after successful start', () async {
+    final vpnManagerSource = await File(
+      path.join(
+        Directory.current.path,
+        'lib/manager/vpn_manager.dart',
+      ),
+    ).readAsString();
+
+    expect(
+      vpnManagerSource,
+      matches(
+        RegExp(
+          r'if \(started != true\) \{[\s\S]*throw PlatformException\([\s\S]*\}[\s\S]*await ref\.read\(systemActionProvider\.notifier\)\.updateLocalIp\(\);',
+          multiLine: true,
+        ),
+      ),
+    );
+  });
+
+  test(
+    'OHOS VpnManager refreshes dashboard network detection after successful start',
+    () async {
+      final vpnManagerSource = await File(
+        path.join(
+          Directory.current.path,
+          'lib/manager/vpn_manager.dart',
+        ),
+      ).readAsString();
+
+      expect(
+        vpnManagerSource,
+        matches(
+          RegExp(
+            r'await ref\.read\(systemActionProvider\.notifier\)\.updateLocalIp\(\);[\s\S]*ref\.read\(checkIpNumProvider\.notifier\)\.add\(\);',
+            multiLine: true,
+          ),
+        ),
+      );
+    },
+  );
+
   test('OHOS VPN ability does not write stopped status before teardown finishes', () async {
     final vpnAbilitySource = await File(
       path.join(
